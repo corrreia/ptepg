@@ -1,16 +1,23 @@
 import aiohttp
 from typing import List
-from api_utils import HEADERS, GRID_URL
 from tv_types import Channel
+from utils import GRID_URL, HEADERS, increment_counter
+
+
 
 async def fetch_channels_async(session: aiohttp.ClientSession) -> List[Channel]:
     """Asynchronously fetch and return a list of channels."""
     print("Fetching channel data asynchronously...")
     try:
         async with session.post(GRID_URL, headers=HEADERS) as response:
+            increment_counter()
             response.raise_for_status()
             grid_data = await response.json()
-            if not grid_data or "d" not in grid_data or "channels" not in grid_data["d"]:
+            if (
+                not grid_data
+                or "d" not in grid_data
+                or "channels" not in grid_data["d"]
+            ):
                 print("Failed to fetch channels or invalid response.")
                 return []
             channels = grid_data["d"]["channels"]

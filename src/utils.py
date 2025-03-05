@@ -1,4 +1,11 @@
-import requests
+# utils.py
+request_counter = 0
+
+
+def increment_counter():
+    global request_counter
+    request_counter += 1
+
 
 # Configuration constants
 GRID_URL = "https://authservice.apps.meo.pt/Services/GridTv/GridTvMng.svc/getGridAnon"
@@ -12,14 +19,3 @@ HEADERS = {
     "Content-Type": "application/json; charset=UTF-8",
     "Accept": "*/*",
 }
-
-
-def make_post_request(url, data=None):
-    """Make a POST request to the specified URL with optional JSON data."""
-    try:
-        response = requests.post(url, headers=HEADERS, json=data)
-        response.raise_for_status()
-        return response.json()
-    except requests.RequestException as e:
-        print(f"Request failed: {e}")
-        return None
