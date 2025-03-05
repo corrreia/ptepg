@@ -17,8 +17,13 @@ class Program(TypedDict):
 # Define Channel type
 class Channel(TypedDict):
     id: str
-    name: str
     meo_id: str  # sigla field
+    name: str
+    description: str
     logo: str
+    theme: str
+    language: str
+    region: str
+    position: int
     isAdult: bool
     programs: List[Program]

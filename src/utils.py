@@ -9,6 +9,7 @@ def increment_counter():
 
 # Configuration constants
 GRID_URL = "https://authservice.apps.meo.pt/Services/GridTv/GridTvMng.svc/getGridAnon"
+CHANNEL_DETAILS_URL = "https://meogouser.apps.meo.pt/Services/GridTv/GridTv.svc/GetChannelInfo?callLetter=" #! dont forget to add the channel id at the end
 PROGRAMS_URL = "https://authservice.apps.meo.pt/Services/GridTv/GridTvMng.svc/getProgramsFromChannels"
 PROGRAM_DETAILS_URL = (
     "https://authservice.apps.meo.pt/Services/GridTv/GridTvMng.svc/getProgramDetails"
