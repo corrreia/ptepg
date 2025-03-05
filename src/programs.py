@@ -1,18 +1,62 @@
 import asyncio
 import aiohttp
-from datetime import datetime
-from typing import List
+from datetime import datetime, timedelta
+from typing import Dict, List
 from api_utils import HEADERS, PROGRAM_DETAILS_URL, PROGRAMS_URL
 from tv_types import Channel, Program
 
-async def fetch_program_details(session: aiohttp.ClientSession, program_id: str) -> Program:
-    """Fetch detailed information for a single program and return a Program object."""
+async def get_correct_dates(date_str: str, start_time_str: str, end_time_str: str) -> tuple[str, str]:
+    """
+    Calculate the correct start and end date-time strings, adjusting for programs that span midnight.
+    
+    Args:
+        date_str: The date string from the API (e.g., "4-3-2025").
+        start_time_str: The start time (e.g., "22:43").
+        end_time_str: The end time (e.g., "00:43").
+    
+    Returns:
+        Tuple of (start_date_time, end_date_time) strings in "d-m-yyyy HH:MM" format.
+    """
+    # Parse the date
+    date_obj = datetime.strptime(date_str, "%d-%m-%Y")
+    # Parse start and end times into time objects
+    start_time = datetime.strptime(start_time_str, "%H:%M").time()
+    end_time = datetime.strptime(end_time_str, "%H:%M").time()
+    
+    # Construct the start datetime
+    start_datetime = datetime.combine(date_obj, start_time)
+    
+    # Check if the end time is before the start time (indicating it’s on the next day)
+    if end_time < start_time:
+        end_datetime = datetime.combine(date_obj + timedelta(days=1), end_time)
+    else:
+        end_datetime = datetime.combine(date_obj, end_time)
+    
+    # Format back to strings
+    start_str = start_datetime.strftime("%d-%m-%Y %H:%M")
+    end_str = end_datetime.strftime("%d-%m-%Y %H:%M")
+    
+    return start_str, end_str
+
+async def fetch_program_details(session: aiohttp.ClientSession, program_id: str) -> Dict:
+    """
+    Fetch detailed information for a single program and return a Program object with corrected dates.
+    
+    Args:
+        session: The aiohttp session for making the request.
+        program_id: The ID of the program to fetch.
+    
+    Returns:
+        A dictionary representing the Program with corrected start and end times.
+    """
+    # Log the request (assuming logger is defined)
+    print(f"Fetching details for program {program_id}...")
     data = {"service": "programdetail", "programID": program_id, "accountID": ""}
     
     try:
         async with session.post(PROGRAM_DETAILS_URL, json=data, headers=HEADERS) as response:
             if response.status != 200:
-                # Return a default Program object if the request fails
+                print(f"Failed to fetch program details: {response.status}")
                 return {
                     "id": program_id,
                     "start_date_time": "",
@@ -25,13 +69,20 @@ async def fetch_program_details(session: aiohttp.ClientSession, program_id: str)
                     "series_id": ""
                 }
             program_data = await response.json()
-            p = program_data.get("d", {})  # Assuming 'd' is the key containing program details
+            p = program_data.get("d", {})
             
-            # Construct the Program object by mapping API fields to Program fields
+            # Get corrected start and end times
+            start_str, end_str = await get_correct_dates(
+                p.get("date", ""),
+                p.get("startTime", ""),
+                p.get("endTime", "")
+            )
+            
+            # Return the Program object with corrected dates
             return {
-                "id": str(p.get("uniqueId", program_id)),  # Use program_id as fallback
-                "start_date_time": f"{p.get('date', '')} {p.get('startTime', '')}".strip(),
-                "end_date_time": f"{p.get('date', '')} {p.get('endTime', '')}".strip(),
+                "id": str(p.get("uniqueId", program_id)),
+                "start_date_time": start_str,
+                "end_date_time": end_str,
                 "name": p.get("progName", ""),
                 "description": p.get("description", ""),
                 "imgM": p.get("progImageM", ""),
@@ -40,7 +91,7 @@ async def fetch_program_details(session: aiohttp.ClientSession, program_id: str)
                 "series_id": p.get("seriesID", "")
             }
     except aiohttp.ClientError as e:
-        # Return a default Program object on exception
+        print(f"Request failed: {e}")
         return {
             "id": program_id,
             "start_date_time": "",
