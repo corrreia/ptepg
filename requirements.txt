@@ -4,6 +4,7 @@ pytz
 fastapi
 uvicorn
 python-dotenv
-authlib
 httpx
 python-multipart
+fastapi-sso
+python-jose[cryptography]
