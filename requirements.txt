@@ -1,3 +1,9 @@
 requests
 aiohttp
 pytz
+fastapi
+uvicorn
+python-dotenv
+authlib
+httpx
+python-multipart

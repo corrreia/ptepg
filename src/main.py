@@ -1,62 +1,88 @@
-import asyncio
-import aiohttp
-from datetime import datetime, timedelta
-import pytz
-from channels import fetch_channels_async
-from programs import fetch_programs_async
-import utils
+import os
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
+from dotenv import load_dotenv
+from api.private.auth import router as auth_router
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Import routers from api and manage modules
 
 
+# Determine if we're in development mode
+is_dev = os.getenv("ENVIRONMENT") == "dev"
+if is_dev:
+    print("Running in dev mode")
 
-async def main_async():
-    """Asynchronously orchestrate the fetching of channels and programs."""
+# Client API (always with Swagger UI and ReDoc)
+public_app = FastAPI(
+    title="Client API",
+    description="Public API for subscription-based access",
+    version="1.0.0",
+    docs_url="/docs",  # Always show Swagger UI
+    redoc_url="/redoc",  # Always show ReDoc
+)
 
-    # Record start time
-    start_time = datetime.now(pytz.utc)
+# Dashboard API (Swagger UI and ReDoc only in dev mode)
+private_app = FastAPI(
+    title="Dashboard API",
+    description="Management API for API keys and subscriptions",
+    version="1.0.0",
+    docs_url="/docs" if is_dev else None,  # Show Swagger UI only in dev
+    redoc_url="/redoc" if is_dev else None,  # Show ReDoc only in dev
+)
 
-    async with aiohttp.ClientSession() as session:
-        # Step 1: Fetch channels asynchronously
-        channels = await fetch_channels_async(session)
-        if not channels:
-            print("No channels fetched. Exiting.")
-            return
+# Add CORS middleware (for frontend access)
+for app in [public_app, private_app]:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:3000"],  # Adjust for your frontend URL
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
-        # Step 2: Define date range (current day to 7 days ahead)
-        start_date = datetime.now(pytz.utc).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
-        end_date = start_date + timedelta(days=7)
-
-        # Step 3: Fetch programs for all channels concurrently
-        print("Fetching programs for all channels concurrently...")
-        tasks = [
-            fetch_programs_async(session, channel, start_date, end_date)
-            for channel in channels
-        ]
-        all_programs = await asyncio.gather(*tasks)
-
-        # Attach programs to their respective channels
-        for channel, programs in zip(channels, all_programs):
-            channel["programs"] = programs
-        print(f"Successfully attached programs to {len(channels)} channels.")
-
-        # Step 4: Export to JSON
-        import json
-
-        with open("channels.json", "w", encoding="utf-8") as f:
-            json.dump(channels, f, indent=4, ensure_ascii=False)
-        print("Channels and programs exported to channels.json")
-
-    # Record end time
-    end_time = datetime.now(pytz.utc)
-
-    # Calculate time delta
-    time_delta = end_time - start_time
-
-    # Print results
-    print(f"Total time taken: {time_delta.total_seconds()} seconds")
-    print(f"Total requests made: {utils.request_counter} equivelant to {utils.request_counter/ time_delta.total_seconds()} requests per second")
+private_app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.getenv(
+        "SESSION_SECRET_KEY", "your-secret-key-here"
+    ),  # Use a secure key
+)
 
 
+# Mount routers to respective apps
+private_app.include_router(auth_router, prefix="/auth", tags=["Auth"])
+# client_app.include_router(client_router, prefix="/api/v1", tags=["Client"])
+# dashboard_app.include_router(users_router, prefix="/manage", tags=["Users"])
+# dashboard_app.include_router(
+#     subscriptions_router, prefix="/manage", tags=["Subscriptions"]
+# )
+# dashboard_app.include_router(api_keys_router, prefix="/manage", tags=["API Keys"])
+
+# Root app to combine both
+root_app = FastAPI()
+
+# Mount the client and dashboard apps under their respective prefixes
+root_app.mount("/api/private", private_app)
+root_app.mount("/api", public_app)
+
+
+# Root endpoint for the main app
+@root_app.get("/")
+async def root():
+    return {
+        "message": "Welcome to the Subscription API",
+        "client_api": "/api",
+        "dashboard_api": "/api/private"
+        if is_dev
+        else "Dashboard API docs available in dev mode only",
+    }
+
+
+# Run the app (for development purposes)
 if __name__ == "__main__":
-    asyncio.run(main_async())
+    import uvicorn
+
+    uvicorn.run(root_app, host="0.0.0.0", port=8000)
