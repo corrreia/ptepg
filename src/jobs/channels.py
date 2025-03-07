@@ -1,14 +1,16 @@
 import asyncio
 import aiohttp
 from typing import List
-from models.epg import EPGChannel
+from schemas.epg import EpgChannelSchema
 from utils.constants import CHANNEL_DETAILS_URL, GRID_URL, HEADERS
+from utils.rate_limit import token_bucket
 
 
 async def fetch_channel_details_async(
-    session: aiohttp.ClientSession, channel: EPGChannel
-) -> EPGChannel:
+    session: aiohttp.ClientSession, channel: EpgChannelSchema
+) -> EpgChannelSchema:
     """Asynchronously fetch and return details for a specific channel."""
+    await token_bucket.acquire()  # Ensure request is rate-limited
     print(f"Fetching details for channel {channel['name']}...")
     try:
         async with session.get(
@@ -33,8 +35,11 @@ async def fetch_channel_details_async(
         return channel
 
 
-async def fetch_channels_async(session: aiohttp.ClientSession) -> List[EPGChannel]:
+async def fetch_channels_async(
+    session: aiohttp.ClientSession,
+) -> List[EpgChannelSchema]:
     """Asynchronously fetch and return a list of channels."""
+    await token_bucket.acquire()  # Ensure request is rate-limited
     print("Fetching channel data asynchronously...")
     try:
         async with session.post(GRID_URL, headers=HEADERS) as response:
@@ -48,12 +53,17 @@ async def fetch_channels_async(session: aiohttp.ClientSession) -> List[EPGChanne
                 print("Failed to fetch channels or invalid response.")
                 return []
             channels = grid_data["d"]["channels"]
-            filtered_channels: List[EPGChannel] = [
+            filtered_channels: List[EpgChannelSchema] = [
                 {
                     "id": str(ch["id"]),
-                    "name": ch["name"],
                     "meo_id": ch["sigla"],
+                    "name": ch["name"],
+                    "description": "",
                     "logo": ch["logo"],
+                    "theme": "",
+                    "language": "",
+                    "region": "",
+                    "position": -1,
                     "isAdult": ch["isAdult"],
                     "programs": [],
                 }

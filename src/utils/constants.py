@@ -11,3 +11,6 @@ HEADERS = {
     "Content-Type": "application/json; charset=UTF-8",
     "Accept": "*/*",
 }
+
+REQUESTS_PER_SECOND = 3
+DAYS_TO_FETCH = 1

@@ -1,9 +1,10 @@
 import asyncio
 import aiohttp
 from datetime import datetime, timedelta
-from typing import Dict, List
-from models.epg import EPGChannel, EPGProgram
+from typing import List
+from schemas.epg import EpgChannelSchema, EpgProgramSchema
 from utils.constants import HEADERS, PROGRAM_DETAILS_URL, PROGRAMS_URL
+from utils.rate_limit import token_bucket
 
 
 async def get_correct_dates(
@@ -44,21 +45,11 @@ async def get_correct_dates(
 
 async def fetch_program_details(
     session: aiohttp.ClientSession, program_id: str
-) -> Dict:
-    """
-    Fetch detailed information for a single program and return a Program object with corrected dates.
-
-    Args:
-        session: The aiohttp session for making the request.
-        program_id: The ID of the program to fetch.
-
-    Returns:
-        A dictionary representing the Program with corrected start and end times.
-    """
-    # Log the request (assuming logger is defined)
+) -> EpgProgramSchema:
+    """Fetch detailed information for a single program."""
+    await token_bucket.acquire()  # Ensure request is rate-limited
     print(f"Fetching details for program {program_id}...")
     data = {"service": "programdetail", "programID": program_id, "accountID": ""}
-
     try:
         async with session.post(
             PROGRAM_DETAILS_URL, json=data, headers=HEADERS
@@ -78,13 +69,9 @@ async def fetch_program_details(
                 }
             program_data = await response.json()
             p = program_data.get("d", {})
-
-            # Get corrected start and end times
             start_str, end_str = await get_correct_dates(
                 p.get("date", ""), p.get("startTime", ""), p.get("endTime", "")
             )
-
-            # Return the Program object with corrected dates
             return {
                 "id": str(p.get("uniqueId", program_id)),
                 "start_date_time": start_str,
@@ -113,15 +100,27 @@ async def fetch_program_details(
 
 async def fetch_programs_async(
     session: aiohttp.ClientSession,
-    channel: EPGChannel,
+    channels: List[EpgChannelSchema],
     start_date: datetime,
     end_date: datetime,
-) -> List[EPGProgram]:
-    """Asynchronously fetch programs with full details for the specified channel and date range."""
-    print(f"Fetching programs for {channel.get('name', 'unknown channel')}...")
+) -> List[EpgChannelSchema]:
+    """Asynchronously fetch programs with full details for a batch of channels and return the channels with programs attached."""
+    if not channels:
+        return []
+
+    # Limit to a maximum of 30 channels per request
+    max_channels_per_request = 30
+    if len(channels) > max_channels_per_request:
+        print(
+            f"Warning: Number of channels exceeds the limit. Only the first {max_channels_per_request} channels will be processed."
+        )
+        channels = channels[:max_channels_per_request]
+
+    await token_bucket.acquire()  # Rate-limit the request
+    print(f"Fetching programs for {len(channels)} channels...")
     data = {
         "service": "channelsguide",
-        "channels": [channel["meo_id"]],
+        "channels": [channel["meo_id"] for channel in channels],
         "dateStart": start_date.isoformat() + "Z",
         "dateEnd": end_date.isoformat() + "Z",
         "accountID": "",
@@ -135,17 +134,22 @@ async def fetch_programs_async(
             or "channels" not in programs_data["d"]
         ):
             print("Failed to fetch programs or invalid response.")
-            return []
+            return channels  # Return channels without programs
 
-        # Extract all program IDs
-        program_ids = [
-            p["uniqueId"]
-            for ch in programs_data["d"]["channels"]
-            for p in ch.get("programs", [])
-            if "uniqueId" in p
-        ]
+        # Organize programs by channel
+        channel_programs = {channel["meo_id"]: [] for channel in channels}
+        for ch in programs_data["d"]["channels"]:
+            meo_id = ch["sigla"]
+            if meo_id in channel_programs:
+                program_ids = [
+                    p["uniqueId"] for p in ch.get("programs", []) if "uniqueId" in p
+                ]
+                tasks = [fetch_program_details(session, pid) for pid in program_ids]
+                programs = await asyncio.gather(*tasks)
+                channel_programs[meo_id] = programs
 
-        # Fetch details for all programs concurrently
-        tasks = [fetch_program_details(session, pid) for pid in program_ids]
-        programs = await asyncio.gather(*tasks)
-        return programs
+        # Attach programs to their respective channels
+        for channel in channels:
+            channel["programs"] = channel_programs.get(channel["meo_id"], [])
+
+        return channels
