@@ -1,9 +1,8 @@
-from typing import TypedDict, List
+from pydantic import BaseModel
 
 
-# Define Program type
-class Program(TypedDict):
-    id: str  # uniqueId field
+class EPGProgram(BaseModel):
+    id: str
     start_date_time: str
     end_date_time: str
     name: str
@@ -14,10 +13,9 @@ class Program(TypedDict):
     series_id: str
 
 
-# Define Channel type
-class Channel(TypedDict):
+class EPGChannel(BaseModel):
     id: str
-    meo_id: str  # sigla field
+    meo_id: str
     name: str
     description: str
     logo: str
@@ -26,4 +24,4 @@ class Channel(TypedDict):
     region: str
     position: int
     isAdult: bool
-    programs: List[Program]
+    programs: list[EPGProgram]

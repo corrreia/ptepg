@@ -16,13 +16,15 @@ prod = os.getenv("ENVIRONMENT") != "dev"
 google_sso = GoogleSSO(
     client_id=os.getenv("GOOGLE_CLIENT_ID"),
     client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
-    redirect_uri=f"{app_url}/auth/google/callback",
+    redirect_uri=f"{app_url}/api/private/auth/google/callback",
+    allow_insecure_http=True if not prod else False,
 )
 
 github_sso = GithubSSO(
     client_id=os.getenv("GITHUB_CLIENT_ID"),
     client_secret=os.getenv("GITHUB_CLIENT_SECRET"),
-    redirect_uri=f"{app_url}/auth/github/callback",
+    redirect_uri=f"{app_url}/api/private/auth/github/callback",
+    allow_insecure_http=True if not prod else False,
 )
 
 router = APIRouter()
@@ -41,7 +43,9 @@ async def get_logged_user(cookie: str = Security(APIKeyCookie(name="token"))) ->
         ) from error
 
 
-@router.get("/protected")
+@router.get(
+    "/protected",
+)
 async def protected_endpoint(user: OpenID = Depends(get_logged_user)):
     """This endpoint will say hello to the logged user.
     If the user is not logged, it will return a 401 error from `get_logged_user`."""
@@ -50,14 +54,17 @@ async def protected_endpoint(user: OpenID = Depends(get_logged_user)):
     }
 
 
-@router.get("/auth/google/login")
+@router.get("/auth/google/login", tags=["Google SSO"])
 async def login_google():
     """Redirect the user to the Google login page."""
     async with google_sso:
         return await google_sso.get_login_redirect()
 
 
-@router.get("/auth/google/callback")
+@router.get(
+    "/auth/google/callback",
+    tags=["Google SSO"],
+)
 async def login_google_callback(request: Request):
     """Process login and redirect the user to the protected endpoint."""
     async with google_sso:
@@ -79,13 +86,18 @@ async def login_google_callback(request: Request):
     )  # This cookie will make sure /protected knows the user
     return response
 
-@router.get("/auth/github/login")
+
+@router.get(
+    "/auth/github/login",
+    tags=["GitHub SSO"],
+)
 async def login_github():
     """Redirect the user to the GitHub login page."""
     async with github_sso:
         return await github_sso.get_login_redirect()
-    
-@router.get("/auth/github/callback")
+
+
+@router.get("/auth/github/callback", tags=["GitHub SSO"])
 async def login_github_callback(request: Request):
     """Process login and redirect the user to the protected endpoint."""
     async with github_sso:
@@ -102,9 +114,7 @@ async def login_github_callback(request: Request):
         algorithm="HS256",
     )
     response = RedirectResponse(url="/protected")
-    response.set_cookie(
-        key="token", value=token, expires=expiration
-    )
+    response.set_cookie(key="token", value=token, expires=expiration)
     return response
 
 

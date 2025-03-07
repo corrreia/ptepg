@@ -2,8 +2,8 @@ import asyncio
 import aiohttp
 from datetime import datetime, timedelta
 from typing import Dict, List
-from tv_types import Channel, Program
-from utils import HEADERS, PROGRAM_DETAILS_URL, PROGRAMS_URL, increment_counter
+from models.epg import EPGChannel, EPGProgram
+from utils.constants import HEADERS, PROGRAM_DETAILS_URL, PROGRAMS_URL
 
 
 async def get_correct_dates(
@@ -63,7 +63,6 @@ async def fetch_program_details(
         async with session.post(
             PROGRAM_DETAILS_URL, json=data, headers=HEADERS
         ) as response:
-            increment_counter()
             if response.status != 200:
                 print(f"Failed to fetch program details: {response.status}")
                 return {
@@ -114,10 +113,10 @@ async def fetch_program_details(
 
 async def fetch_programs_async(
     session: aiohttp.ClientSession,
-    channel: Channel,
+    channel: EPGChannel,
     start_date: datetime,
     end_date: datetime,
-) -> List[Program]:
+) -> List[EPGProgram]:
     """Asynchronously fetch programs with full details for the specified channel and date range."""
     print(f"Fetching programs for {channel.get('name', 'unknown channel')}...")
     data = {
@@ -128,7 +127,6 @@ async def fetch_programs_async(
         "accountID": "",
     }
     async with session.post(PROGRAMS_URL, json=data, headers=HEADERS) as response:
-        increment_counter()
         response.raise_for_status()
         programs_data = await response.json()
         if (

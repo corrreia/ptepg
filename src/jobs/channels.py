@@ -1,13 +1,13 @@
 import asyncio
 import aiohttp
 from typing import List
-from tv_types import Channel
-from utils import CHANNEL_DETAILS_URL, GRID_URL, HEADERS, increment_counter
+from models.epg import EPGChannel
+from utils.constants import CHANNEL_DETAILS_URL, GRID_URL, HEADERS
 
 
 async def fetch_channel_details_async(
-    session: aiohttp.ClientSession, channel: Channel
-) -> Channel:
+    session: aiohttp.ClientSession, channel: EPGChannel
+) -> EPGChannel:
     """Asynchronously fetch and return details for a specific channel."""
     print(f"Fetching details for channel {channel['name']}...")
     try:
@@ -15,7 +15,6 @@ async def fetch_channel_details_async(
             CHANNEL_DETAILS_URL + channel.get("meo_id"),
             headers=HEADERS,
         ) as response:
-            increment_counter()
             response.raise_for_status()
             channel_data = await response.json()
             if not channel_data or "Result" not in channel_data:
@@ -34,12 +33,11 @@ async def fetch_channel_details_async(
         return channel
 
 
-async def fetch_channels_async(session: aiohttp.ClientSession) -> List[Channel]:
+async def fetch_channels_async(session: aiohttp.ClientSession) -> List[EPGChannel]:
     """Asynchronously fetch and return a list of channels."""
     print("Fetching channel data asynchronously...")
     try:
         async with session.post(GRID_URL, headers=HEADERS) as response:
-            increment_counter()
             response.raise_for_status()
             grid_data = await response.json()
             if (
@@ -50,7 +48,7 @@ async def fetch_channels_async(session: aiohttp.ClientSession) -> List[Channel]:
                 print("Failed to fetch channels or invalid response.")
                 return []
             channels = grid_data["d"]["channels"]
-            filtered_channels: List[Channel] = [
+            filtered_channels: List[EPGChannel] = [
                 {
                     "id": str(ch["id"]),
                     "name": ch["name"],

@@ -4,17 +4,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from dotenv import load_dotenv
 from api.private.auth import router as auth_router
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from jobs.epg import get_meo_epg
+from utils.logger import logger
 
 # Load environment variables from .env file
 load_dotenv()
 
-# Import routers from api and manage modules
-
-
 # Determine if we're in development mode
 is_dev = os.getenv("ENVIRONMENT") == "dev"
 if is_dev:
-    print("Running in dev mode")
+    logger.info("Running in development mode.")
 
 # Client API (always with Swagger UI and ReDoc)
 public_app = FastAPI(
@@ -51,9 +51,10 @@ private_app.add_middleware(
     ),  # Use a secure key
 )
 
-
 # Mount routers to respective apps
-private_app.include_router(auth_router, prefix="/auth", tags=["Auth"])
+# Include auth_router without prefix to avoid double '/auth/' in paths
+private_app.include_router(auth_router)  # Fixed: Removed prefix="/auth"
+
 # client_app.include_router(client_router, prefix="/api/v1", tags=["Client"])
 # dashboard_app.include_router(users_router, prefix="/manage", tags=["Users"])
 # dashboard_app.include_router(
@@ -65,20 +66,21 @@ private_app.include_router(auth_router, prefix="/auth", tags=["Auth"])
 root_app = FastAPI()
 
 # Mount the client and dashboard apps under their respective prefixes
-root_app.mount("/api/private", private_app)
+# root_app.mount("/api/private", private_app)
 root_app.mount("/api", public_app)
 
+root_app.state.scheduler = AsyncIOScheduler()
 
-# Root endpoint for the main app
-@root_app.get("/")
-async def root():
-    return {
-        "message": "Welcome to the Subscription API",
-        "client_api": "/api",
-        "dashboard_api": "/api/private"
-        if is_dev
-        else "Dashboard API docs available in dev mode only",
-    }
+
+@root_app.on_event("startup")
+async def startup_event():
+    root_app.state.scheduler.add_job(get_meo_epg, "cron", hour=0, minute=0)
+    root_app.state.scheduler.start()
+
+
+@root_app.on_event("shutdown")
+async def shutdown_event():
+    root_app.state.scheduler.shutdown()
 
 
 # Run the app (for development purposes)

@@ -1,17 +1,15 @@
 import asyncio
+import datetime
+
 import aiohttp
-from datetime import datetime, timedelta
 import pytz
-from channels import fetch_channels_async
-from programs import fetch_programs_async
-import utils
+
+from jobs.channels import fetch_channels_async
+from jobs.programs import fetch_programs_async
 
 
-
-async def main_async():
-    """Asynchronously orchestrate the fetching of channels and programs."""
-
-    # Record start time
+async def get_meo_epg():
+    """Get the EPG from MEO and store it in the database.(updating it)"""
     start_time = datetime.now(pytz.utc)
 
     async with aiohttp.ClientSession() as session:
@@ -25,7 +23,7 @@ async def main_async():
         start_date = datetime.now(pytz.utc).replace(
             hour=0, minute=0, second=0, microsecond=0
         )
-        end_date = start_date + timedelta(days=7)
+        end_date = start_date + datetime.timedelta(days=7)
 
         # Step 3: Fetch programs for all channels concurrently
         print("Fetching programs for all channels concurrently...")
@@ -52,11 +50,3 @@ async def main_async():
 
     # Calculate time delta
     time_delta = end_time - start_time
-
-    # Print results
-    print(f"Total time taken: {time_delta.total_seconds()} seconds")
-    print(f"Total requests made: {utils.request_counter} equivelant to {utils.request_counter/ time_delta.total_seconds()} requests per second")
-
-
-if __name__ == "__main__":
-    asyncio.run(main_async())
