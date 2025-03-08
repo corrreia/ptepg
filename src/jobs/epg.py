@@ -18,7 +18,7 @@ async def get_meo_epg():
         # Step 1: Fetch channels asynchronously
         channels = await fetch_channels_async(session)
         if not channels:
-            print("No channels fetched. Exiting.")
+            logger.error("No channels fetched. Exiting.")
             return
 
         start_date = datetime.now(pytz.utc).replace(
@@ -40,13 +40,6 @@ async def get_meo_epg():
 
         # Save all channels to the database
         save_to_database(all_updated_channels)
-
-        # Step 4: Export to JSON
-        import json
-
-        with open("channels.json", "w", encoding="utf-8") as f:
-            json.dump(all_updated_channels, f, indent=4, ensure_ascii=False)
-        print("Channels and programs exported to channels.json")
 
     # Record end time
     end_time = datetime.now(pytz.utc)
