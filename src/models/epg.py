@@ -1,15 +1,13 @@
 from sqlalchemy import Boolean, Column, ForeignKey, Integer, String
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
+from utils.db import Base  # Import Base from db.py instead of creating a new one
 
-Base = declarative_base()
 
-
-class EPGChannel(Base):
+class EPGChannelModel(Base):
     __tablename__ = "channels"
 
     id = Column(Integer, primary_key=True, index=True)
-    meo_id = Column(String, unique=True, index=True)  # Added unique constraint
+    meo_id = Column(String, unique=True, index=True)
     name = Column(String)
     description = Column(String)
     logo = Column(String)
@@ -18,16 +16,14 @@ class EPGChannel(Base):
     region = Column(String)
     position = Column(Integer)
     isAdult = Column(Boolean)
-    programs = relationship("EPGProgram", back_populates="channel")
+    programs = relationship("EPGProgramModel", back_populates="channel")
 
 
-class EPGProgram(Base):
+class EPGProgramModel(Base):
     __tablename__ = "programs"
 
     id = Column(Integer, primary_key=True, index=True)
-    meo_program_id = Column(
-        String, unique=True, index=True
-    )  # Added to store uniqueId from API
+    meo_program_id = Column(String, unique=True, index=True)
     start_date_time = Column(String)
     end_date_time = Column(String)
     name = Column(String)
@@ -37,4 +33,4 @@ class EPGProgram(Base):
     imgXL = Column(String)
     series_id = Column(String)
     channel_id = Column(Integer, ForeignKey("channels.id"))
-    channel = relationship("EPGChannel", back_populates="programs")
+    channel = relationship("EPGChannelModel", back_populates="programs")

@@ -7,9 +7,13 @@ from api.private.auth import router as auth_router
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from jobs.epg import get_meo_epg
 from utils.logger import logger
+from utils.db import initialize_database
 
 # Load environment variables from .env file
 load_dotenv()
+
+# Call this before using any database operations
+initialize_database()
 
 # Determine if we're in development mode
 is_dev = os.getenv("ENVIRONMENT") == "dev"
@@ -71,16 +75,20 @@ root_app.mount("/api", public_app)
 
 root_app.state.scheduler = AsyncIOScheduler()
 
+import asyncio
 
-@root_app.on_event("startup")
-async def startup_event():
-    root_app.state.scheduler.add_job(get_meo_epg, "cron", hour=0, minute=0)
-    root_app.state.scheduler.start()
+asyncio.run(get_meo_epg())
 
 
-@root_app.on_event("shutdown")
-async def shutdown_event():
-    root_app.state.scheduler.shutdown()
+# @root_app.on_event("startup")
+# async def startup_event():
+#     root_app.state.scheduler.add_job(get_meo_epg, "cron", hour=0, minute=0)
+#     root_app.state.scheduler.start()
+
+
+# @root_app.on_event("shutdown")
+# async def shutdown_event():
+#     root_app.state.scheduler.shutdown()
 
 
 # Run the app (for development purposes)

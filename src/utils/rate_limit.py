@@ -1,8 +1,7 @@
 # Token Bucket for rate limiting
 import asyncio
-import datetime
-
-from src.utils.constants import REQUESTS_PER_SECOND
+from datetime import datetime
+from utils.constants import REQUESTS_PER_SECOND
 
 
 class TokenBucket:

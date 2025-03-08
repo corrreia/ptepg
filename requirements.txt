@@ -10,3 +10,4 @@ fastapi-sso
 python-jose[cryptography]
 itsdangerous
 sqlalchemy
+psycopg2-binary

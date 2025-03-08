@@ -1,14 +1,11 @@
-import asyncio
-import datetime
-
+from datetime import datetime, timedelta
 import aiohttp
 import pytz
-
 from typing import List
-from models.epg import EPGChannel, EPGProgram
+from models.epg import EPGChannelModel, EPGProgramModel
 from jobs.channels import fetch_channels_async
 from jobs.programs import fetch_programs_async
-from src.schemas.epg import EpgChannelSchema
+from utils.constants import DAYS_TO_FETCH
 from utils.logger import logger
 from utils.db import get_db
 
@@ -24,32 +21,31 @@ async def get_meo_epg():
             print("No channels fetched. Exiting.")
             return
 
-        # Step 2: Define date range (current day to 7 days ahead)
         start_date = datetime.now(pytz.utc).replace(
             hour=0, minute=0, second=0, microsecond=0
         )
-        end_date = start_date + datetime.timedelta(days=7)
+        end_date = start_date + timedelta(days=DAYS_TO_FETCH)
 
-        # Step 3: Fetch programs for all channels concurrently
-        print("Fetching programs for all channels concurrently...")
-        tasks = [
-            fetch_programs_async(session, channel, start_date, end_date)
-            for channel in channels
-        ]
-        all_programs = await asyncio.gather(*tasks)
+        # Process channels in batches of 30
+        batch_size = 30
+        all_updated_channels = []  # Initialize an empty list to store all channels
 
-        # Attach programs to their respective channels
-        for channel, programs in zip(channels, all_programs):
-            channel["programs"] = programs
-        print(f"Successfully attached programs to {len(channels)} channels.")
+        for i in range(0, len(channels), batch_size):
+            batch = channels[i : i + batch_size]
+            batch_updated_channels = await fetch_programs_async(
+                session, batch, start_date, end_date
+            )
+            # Add this batch's channels to our accumulated list
+            all_updated_channels.extend(batch_updated_channels)
 
-        save_to_database(channels)
+        # Save all channels to the database
+        save_to_database(all_updated_channels)
 
         # Step 4: Export to JSON
         import json
 
         with open("channels.json", "w", encoding="utf-8") as f:
-            json.dump(channels, f, indent=4, ensure_ascii=False)
+            json.dump(all_updated_channels, f, indent=4, ensure_ascii=False)
         print("Channels and programs exported to channels.json")
 
     # Record end time
@@ -60,96 +56,92 @@ async def get_meo_epg():
     logger.info(f"EPG update took {time_delta.total_seconds()} seconds.")
 
 
-def save_to_database(channels: List[EpgChannelSchema]):
+def save_to_database(channels: List[dict]):
     """
     Save EPG channels and programs to the database, updating existing records or inserting new ones.
 
     Args:
-        db: SQLAlchemy database session.
-        channels: List of channel dictionaries with attached programs.
+        channels: List of dictionaries containing channel data and their associated programs.
     """
-    # Fetch all existing channels by meo_id
-    db = get_db()
-    existing_channels = {ch.meo_id: ch for ch in db.query(EPGChannel).all()}
-    channel_map = {}
+    # Get the actual database session from the generator
+    db = next(get_db())
 
-    # Process channels: update existing or insert new
-    for channel_data in channels:
-        meo_id = channel_data["meo_id"]
-        if meo_id in existing_channels:
-            channel_db = existing_channels[meo_id]
-            # Update fields
-            channel_db.name = channel_data["name"]
-            channel_db.description = channel_data["description"]
-            channel_db.logo = channel_data["logo"]
-            channel_db.theme = channel_data["theme"]
-            channel_db.language = channel_data["language"]
-            channel_db.region = channel_data["region"]
-            channel_db.position = channel_data["position"]
-            channel_db.isAdult = channel_data["isAdult"]
-        else:
-            channel_db = EPGChannel(
-                meo_id=meo_id,
-                name=channel_data["name"],
-                description=channel_data["description"],
-                logo=channel_data["logo"],
-                theme=channel_data["theme"],
-                language=channel_data["language"],
-                region=channel_data["region"],
-                position=channel_data["position"],
-                isAdult=channel_data["isAdult"],
+    try:
+        for channel in channels:
+            # Check if the channel already exists in the database by its unique meo_id
+            existing_channel = (
+                db.query(EPGChannelModel).filter_by(meo_id=channel["meo_id"]).first()
             )
-            db.add(channel_db)
-        channel_map[meo_id] = channel_db
 
-    # Flush to assign IDs to new channels
-    db.flush()
-
-    # Collect all meo_program_ids from fetched programs
-    all_meo_program_ids = [
-        program["id"] for channel in channels for program in channel["programs"]
-    ]
-
-    # Fetch existing programs with these meo_program_ids
-    existing_programs = (
-        db.query(EPGProgram)
-        .filter(EPGProgram.meo_program_id.in_(all_meo_program_ids))
-        .all()
-    )
-    program_map = {p.meo_program_id: p for p in existing_programs}
-
-    # Process programs: update existing or insert new
-    for channel_data in channels:
-        channel_db = channel_map[channel_data["meo_id"]]
-        for program_data in channel_data["programs"]:
-            meo_program_id = program_data["id"]
-            if meo_program_id in program_map:
-                program_db = program_map[meo_program_id]
-                # Update fields
-                program_db.start_date_time = program_data["start_date_time"]
-                program_db.end_date_time = program_data["end_date_time"]
-                program_db.name = program_data["name"]
-                program_db.description = program_data["description"]
-                program_db.imgM = program_data["imgM"]
-                program_db.imgL = program_data["imgL"]
-                program_db.imgXL = program_data["imgXL"]
-                program_db.series_id = program_data["series_id"]
-                program_db.channel_id = channel_db.id  # Ensure channel_id is correct
+            if existing_channel:
+                # Update existing channel fields
+                existing_channel.name = channel["name"]
+                existing_channel.description = channel["description"]
+                existing_channel.logo = channel["logo"]
+                existing_channel.theme = channel["theme"]
+                existing_channel.language = channel["language"]
+                existing_channel.region = channel["region"]
+                existing_channel.position = channel["position"]
+                existing_channel.isAdult = channel["isAdult"]
+                channel_model = existing_channel
             else:
-                program_db = EPGProgram(
-                    meo_program_id=meo_program_id,
-                    channel_id=channel_db.id,
-                    start_date_time=program_data["start_date_time"],
-                    end_date_time=program_data["end_date_time"],
-                    name=program_data["name"],
-                    description=program_data["description"],
-                    imgM=program_data["imgM"],
-                    imgL=program_data["imgL"],
-                    imgXL=program_data["imgXL"],
-                    series_id=program_data["series_id"],
+                # Create a new channel record
+                channel_model = EPGChannelModel(
+                    meo_id=channel["meo_id"],
+                    name=channel["name"],
+                    description=channel["description"],
+                    logo=channel["logo"],
+                    theme=channel["theme"],
+                    language=channel["language"],
+                    region=channel["region"],
+                    position=channel["position"],
+                    isAdult=channel["isAdult"],
                 )
-                db.add(program_db)
+                db.add(channel_model)
+                db.flush()  # Flush to generate the channel's id
 
-    # Commit all changes
-    db.commit()
-    print(f"Saved {len(channels)} channels and their programs to the database.")
+            # Process each program associated with the channel
+            for program in channel["programs"]:
+                # Check if the program exists by its unique meo_program_id
+                existing_program = (
+                    db.query(EPGProgramModel)
+                    .filter_by(meo_program_id=program["id"])
+                    .first()
+                )
+
+                if existing_program:
+                    # Update existing program fields
+                    existing_program.start_date_time = program["start_date_time"]
+                    existing_program.end_date_time = program["end_date_time"]
+                    existing_program.name = program["name"]
+                    existing_program.description = program["description"]
+                    existing_program.imgM = program["imgM"]
+                    existing_program.imgL = program["imgL"]
+                    existing_program.imgXL = program["imgXL"]
+                    existing_program.series_id = program["series_id"]
+                    existing_program.channel_id = (
+                        channel_model.id
+                    )  # Ensure correct channel linkage
+                else:
+                    # Create a new program record
+                    new_program = EPGProgramModel(
+                        meo_program_id=program["id"],
+                        channel_id=channel_model.id,
+                        start_date_time=program["start_date_time"],
+                        end_date_time=program["end_date_time"],
+                        name=program["name"],
+                        description=program["description"],
+                        imgM=program["imgM"],
+                        imgL=program["imgL"],
+                        imgXL=program["imgXL"],
+                        series_id=program["series_id"],
+                    )
+                    db.add(new_program)
+
+        # Commit all changes at the end
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise e
+    finally:
+        db.close()
