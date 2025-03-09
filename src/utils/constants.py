@@ -12,5 +12,5 @@ HEADERS = {
     "Accept": "*/*",
 }
 
-REQUESTS_PER_SECOND = 4
+REQUESTS_PER_SECOND = 3
 DAYS_TO_FETCH = 1

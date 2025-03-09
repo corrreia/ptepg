@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, DateTime
 from sqlalchemy.orm import relationship
 from utils.db import Base  # Import Base from db.py instead of creating a new one
 
@@ -24,8 +24,8 @@ class EPGProgramModel(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     meo_program_id = Column(String, unique=True, index=True)
-    start_date_time = Column(String)
-    end_date_time = Column(String)
+    start_date_time = Column(DateTime)
+    end_date_time = Column(DateTime)
     name = Column(String)
     description = Column(String)
     imgM = Column(String)

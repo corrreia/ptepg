@@ -10,7 +10,7 @@ from utils.logger import logger
 
 async def get_correct_dates(
     date_str: str, start_time_str: str, end_time_str: str
-) -> tuple[str, str]:
+) -> tuple[datetime, datetime]:
     """
     Calculate the correct start and end date-time strings, adjusting for programs that span midnight.
 
@@ -20,7 +20,7 @@ async def get_correct_dates(
         end_time_str: The end time (e.g., "00:43").
 
     Returns:
-        Tuple of (start_date_time, end_date_time) strings in "d-m-yyyy HH:MM" format.
+        Tuple of (start_date_time, end_date_time) datetime objects.
     """
     # Parse the date
     date_obj = datetime.strptime(date_str, "%d-%m-%Y")
@@ -37,11 +37,7 @@ async def get_correct_dates(
     else:
         end_datetime = datetime.combine(date_obj, end_time)
 
-    # Format back to strings
-    start_str = start_datetime.strftime("%d-%m-%Y %H:%M")
-    end_str = end_datetime.strftime("%d-%m-%Y %H:%M")
-
-    return start_str, end_str
+    return start_datetime, end_datetime
 
 
 async def fetch_program_details(
@@ -70,13 +66,13 @@ async def fetch_program_details(
                 }
             program_data = await response.json()
             p = program_data.get("d", {})
-            start_str, end_str = await get_correct_dates(
+            start_datetime, end_datetime = await get_correct_dates(
                 p.get("date", ""), p.get("startTime", ""), p.get("endTime", "")
             )
             return {
                 "id": str(p.get("uniqueId", program_id)),
-                "start_date_time": start_str,
-                "end_date_time": end_str,
+                "start_date_time": start_datetime.strftime("%d-%m-%Y %H:%M"),
+                "end_date_time": end_datetime.strftime("%d-%m-%Y %H:%M"),
                 "name": p.get("progName", ""),
                 "description": p.get("description", ""),
                 "imgM": p.get("progImageM", ""),
